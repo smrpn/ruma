@@ -286,15 +286,13 @@ pub fn expand_message_event_content(
     let ident = input.ident.clone();
     let room_ev_content = expand_room_event_content(input, ruma_events)?;
 
-    let redacted_marker_trait = if needs_redacted_from_input(input) {
+    let redacted_marker_trait = needs_redacted_from_input(input).then(|| {
         let ident = format_ident!("Redacted{}", &ident);
         quote! {
             #[automatically_derived]
             impl #ruma_events::RedactedMessageEventContent for #ident {}
         }
-    } else {
-        TokenStream::new()
-    };
+    });
 
     Ok(quote! {
         #room_ev_content
@@ -314,15 +312,13 @@ pub fn expand_state_event_content(
     let ident = input.ident.clone();
     let room_ev_content = expand_room_event_content(input, ruma_events)?;
 
-    let redacted_marker_trait = if needs_redacted_from_input(input) {
+    let redacted_marker_trait = needs_redacted_from_input(input).then(|| {
         let ident = format_ident!("Redacted{}", input.ident);
         quote! {
             #[automatically_derived]
             impl #ruma_events::RedactedStateEventContent for #ident {}
         }
-    } else {
-        TokenStream::new()
-    };
+    });
 
     Ok(quote! {
         #room_ev_content

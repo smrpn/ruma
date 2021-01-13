@@ -73,12 +73,12 @@ pub fn unique_lifetimes_to_tokens<'a, I: Iterator<Item = &'a Lifetime>>(
     lifetimes: I,
 ) -> TokenStream {
     let lifetimes = lifetimes.collect::<BTreeSet<_>>();
-    if lifetimes.is_empty() {
-        TokenStream::new()
-    } else {
-        let lifetimes = quote! { #( #lifetimes ),* };
-        quote! { < #lifetimes > }
-    }
+    (!lifetimes.is_empty())
+        .then(|| {
+            let lifetimes = quote! { #( #lifetimes ),* };
+            quote! { < #lifetimes > }
+        })
+        .unwrap_or_default()
 }
 
 pub fn has_lifetime(ty: &Type) -> bool {

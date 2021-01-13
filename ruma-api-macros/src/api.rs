@@ -92,14 +92,12 @@ pub fn expand_all(api: Api) -> syn::Result<TokenStream> {
     let incoming_request_type =
         if api.request.contains_lifetimes() { quote!(IncomingRequest) } else { quote!(Request) };
 
-    let extract_request_path = if api.request.has_path_fields() {
+    let extract_request_path = api.request.has_path_fields().then(|| {
         quote! {
             let path_segments: ::std::vec::Vec<&::std::primitive::str> =
                 request.uri().path()[1..].split('/').collect();
         }
-    } else {
-        TokenStream::new()
-    };
+    });
 
     let (request_path_string, parse_request_path) =
         util::request_path_string_and_parse(&api.request, &api.metadata, &ruma_api);
@@ -134,24 +132,21 @@ pub fn expand_all(api: Api) -> syn::Result<TokenStream> {
         });
     }
 
-    let extract_request_headers = if api.request.has_header_fields() {
+    let extract_request_headers = api.request.has_header_fields().then(|| {
         quote! {
             let headers = request.headers();
         }
-    } else {
-        TokenStream::new()
-    };
+    });
 
     let extract_request_body =
-        if api.request.has_body_fields() || api.request.newtype_body_field().is_some() {
-            let body_lifetimes = if api.request.has_body_lifetimes() {
+        (api.request.has_body_fields() || api.request.newtype_body_field().is_some()).then(|| {
+            let body_lifetimes = api.request.has_body_lifetimes().then(|| {
                 // duplicate the anonymous lifetime as many times as needed
                 let lifetimes =
                     std::iter::repeat(quote! { '_ }).take(api.request.body_lifetime_count());
                 quote! { < #( #lifetimes, )* >}
-            } else {
-                TokenStream::new()
-            };
+            });
+
             quote! {
                 let request_body: <
                     RequestBody #body_lifetimes
@@ -168,51 +163,43 @@ pub fn expand_all(api: Api) -> syn::Result<TokenStream> {
                     #ruma_api::try_deserialize!(request, #serde_json::from_slice(json))
                 };
             }
-        } else {
-            TokenStream::new()
-        };
+        });
 
-    let parse_request_headers = if api.request.has_header_fields() {
-        api.request.parse_headers_from_request()
-    } else {
-        TokenStream::new()
-    };
+    let parse_request_headers =
+        api.request.has_header_fields().then(|| api.request.parse_headers_from_request());
 
     let request_body = util::build_request_body(&api.request, &ruma_api);
     let parse_request_body = util::parse_request_body(&api.request);
 
-    let extract_response_headers = if api.response.has_header_fields() {
+    let extract_response_headers = api.response.has_header_fields().then(|| {
         quote! {
             let mut headers = response.headers().clone();
         }
-    } else {
-        TokenStream::new()
-    };
+    });
 
-    let typed_response_body_decl =
-        if api.response.has_body_fields() || api.response.newtype_body_field().is_some() {
-            quote! {
-                let response_body: <
-                    ResponseBody
-                    as #ruma_serde::Outgoing
-                >::Incoming = {
-                    // If the reponse body is completely empty, pretend it is an empty JSON object
-                    // instead. This allows reponses with only optional body parameters to be
-                    // deserialized in that case.
-                    let json = match response.body().as_slice() {
-                        b"" => b"{}",
-                        body => body,
-                    };
-
-                    #ruma_api::try_deserialize!(
-                        response,
-                        #serde_json::from_slice(json),
-                    )
+    let typed_response_body_decl = (api.response.has_body_fields()
+        || api.response.newtype_body_field().is_some())
+    .then(|| {
+        quote! {
+            let response_body: <
+                ResponseBody
+                as #ruma_serde::Outgoing
+            >::Incoming = {
+                // If the reponse body is completely empty, pretend it is an empty JSON object
+                // instead. This allows reponses with only optional body parameters to be
+                // deserialized in that case.
+                let json = match response.body().as_slice() {
+                    b"" => b"{}",
+                    body => body,
                 };
-            }
-        } else {
-            TokenStream::new()
-        };
+
+                #ruma_api::try_deserialize!(
+                    response,
+                    #serde_json::from_slice(json),
+                )
+            };
+        }
+    });
 
     let response_init_fields = api.response.init_fields();
     let serialize_response_headers = api.response.apply_header_fields();
@@ -227,9 +214,7 @@ pub fn expand_all(api: Api) -> syn::Result<TokenStream> {
     let error = &api.error_ty;
     let request_lifetimes = api.request.combine_lifetimes();
 
-    let non_auth_endpoint_impls = if authentication != "None" {
-        TokenStream::new()
-    } else {
+    let non_auth_endpoint_impls = (authentication == "None").then(|| {
         quote! {
             #[automatically_derived]
             impl #request_lifetimes #ruma_api::OutgoingNonAuthRequest
@@ -239,7 +224,7 @@ pub fn expand_all(api: Api) -> syn::Result<TokenStream> {
             #[automatically_derived]
             impl #ruma_api::IncomingNonAuthRequest for #incoming_request_type {}
         }
-    };
+    });
 
     Ok(quote! {
         #[doc = #request_doc]
