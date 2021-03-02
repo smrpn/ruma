@@ -142,7 +142,7 @@ macro_rules! common_impls {
 macro_rules! opaque_identifier {
     (
         $( #[doc = $docs:literal] )*
-        $vis:vis type $id:ident;
+        $vis:vis type $id:ident [ $validate_fn:path ];
     ) => {
         $( #[doc = $docs] )*
         #[repr(transparent)]
@@ -153,105 +153,105 @@ macro_rules! opaque_identifier {
                 #[doc = concat!("An owned [", stringify!($id), "].")]
                 pub type [<$id Box>] = ::std::boxed::Box<$id>;
             }
-        }
 
-        impl $id {
-            #[allow(clippy::transmute_ptr_to_ptr)]
-            fn from_borrowed(s: &str) -> &Self {
-                unsafe { ::std::mem::transmute(s) }
-            }
+            impl $id {
+                #[allow(clippy::transmute_ptr_to_ptr)]
+                fn from_borrowed(s: &str) -> &Self {
+                    unsafe { ::std::mem::transmute(s) }
+                }
 
-            pub(super) fn from_owned(s: ::std::boxed::Box<str>) -> ::std::boxed::Box<Self> {
-                unsafe { ::std::mem::transmute(s) }
-            }
+                pub(super) fn from_owned(s: ::std::boxed::Box<str>) -> ::std::boxed::Box<Self> {
+                    unsafe { ::std::mem::transmute(s) }
+                }
 
-            fn into_owned(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<str> {
-                unsafe { ::std::mem::transmute(self) }
-            }
+                fn into_owned(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<str> {
+                    unsafe { ::std::mem::transmute(self) }
+                }
 
-            doc_concat! {
-                #[doc = concat!("Creates a string slice from this `", stringify!($id), "`.")]
-                pub fn as_str(&self) -> &str {
-                    &self.0
+                doc_concat! {
+                    #[doc = concat!("Creates a string slice from this `", stringify!($id), "`.")]
+                    pub fn as_str(&self) -> &str {
+                        &self.0
+                    }
+                }
+
+                doc_concat! {
+                    #[doc = concat!("Creates a byte slice from this `", stringify!($id), "`.")]
+                    pub fn as_bytes(&self) -> &[u8] {
+                        self.0.as_bytes()
+                    }
                 }
             }
 
-            doc_concat! {
-                #[doc = concat!("Creates a byte slice from this `", stringify!($id), "`.")]
-                pub fn as_bytes(&self) -> &[u8] {
-                    self.0.as_bytes()
+            impl ::std::fmt::Debug for $id {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    f.write_str(self.as_str())
                 }
             }
-        }
 
-        impl ::std::fmt::Debug for $id {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                f.write_str(self.as_ref())
+            impl Clone for [<$id Box>] {
+                fn clone(&self) -> Self {
+                    (**self).to_owned()
+                }
             }
-        }
 
-        impl Clone for ::std::boxed::Box<$id> {
-            fn clone(&self) -> Self {
-                (**self).to_owned()
+            impl ToOwned for $id {
+                type Owned = [<$id Box>];
+
+                fn to_owned(&self) -> Self::Owned {
+                    Self::from_owned(self.0.into())
+                }
             }
-        }
 
-        impl ToOwned for $id {
-            type Owned = ::std::boxed::Box<$id>;
-
-            fn to_owned(&self) -> Self::Owned {
-                Self::from_owned(self.0.to_owned().into_boxed_str())
+            impl From<&$id> for [<$id Box>] {
+                fn from(id: &$id) -> Self {
+                    id.to_owned()
+                }
             }
-        }
 
-        impl From<&$id> for ::std::boxed::Box<$id> {
-            fn from(id: &$id) -> Self {
-                id.to_owned()
+            impl AsRef<str> for [<$id Box>] {
+                fn as_ref(&self) -> &str {
+                    self.as_str()
+                }
             }
-        }
 
-        impl AsRef<str> for ::std::boxed::Box<$id> {
-            fn as_ref(&self) -> &str {
-                self.as_str()
+            impl<'a> From<&'a str> for &'a $id {
+                fn from(s: &'a str) -> Self {
+                    $id::from_borrowed(s)
+                }
             }
-        }
 
-        impl<'a> From<&'a str> for &'a $id {
-            fn from(s: &'a str) -> Self {
-                $id::from_borrowed(s)
+            impl From<&str> for [<$id Box>] {
+                fn from(s: &str) -> Self {
+                    $id::from_owned(s.into())
+                }
             }
-        }
 
-        impl From<&str> for ::std::boxed::Box<$id> {
-            fn from(s: &str) -> Self {
-                $id::from_owned(s.into())
+            impl From<String> for [<$id Box>] {
+                fn from(s: String) -> Self {
+                    $id::from_owned(s.into())
+                }
             }
-        }
 
-        impl From<String> for ::std::boxed::Box<$id> {
-            fn from(s: String) -> Self {
-                $id::from_owned(s.into())
+            #[cfg(feature = "serde")]
+            impl<'de> ::serde::Deserialize<'de> for [<$id Box>] {
+                fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                where
+                    D: ::serde::Deserializer<'de>,
+                {
+                    ::std::boxed::Box::<str>::deserialize(deserializer).map($id::from_owned)
+                }
             }
-        }
 
-        impl From<::std::boxed::Box<$id>> for String {
-            fn from(id: ::std::boxed::Box<$id>) -> Self {
-                id.into_owned().into()
+            impl From<[<$id Box>]> for String {
+                fn from(id: [<$id Box>]) -> Self {
+                    id.into_owned().into()
+                }
             }
-        }
 
-        #[cfg(feature = "serde")]
-        impl<'de> ::serde::Deserialize<'de> for ::std::boxed::Box<$id> {
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-            where
-                D: ::serde::Deserializer<'de>,
-            {
-                ::std::boxed::Box::<str>::deserialize(deserializer).map($id::from_owned)
-            }
+            as_str_based_impls!($id);
+            partial_eq_string!($id);
+            partial_eq_string!([<$id Box>]);
         }
-
-        as_str_based_impls!($id);
-        partial_eq_string!($id);
-        partial_eq_string!(::std::boxed::Box<$id>);
     };
 }
